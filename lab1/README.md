@@ -57,7 +57,7 @@
    - `min` и `max` — минимальное и максимальное значение за всё время.
 
 3. **Снимок (`snapshot()`):**
-   Возвращает объект `Snapshot`, содержащий отдельную копию корзин, сводку, а также вычисленные перцентили:
+   Возвращает объект `utils.Snapshot`, содержащий отдельную копию корзин, сводку, а также вычисленные перцентили:
    - `p50` (медиана) — задержка, ниже которой уложились 50% запросов.
    - `p99` — задержка, ниже которой уложились 99% запросов.
    *Оба перцентиля возвращаются в миллисекундах* (нижняя граница соответствующей корзины: `bucket_index * 4`).
@@ -65,20 +65,28 @@
 ### Сигнатуры классов
 
 **Java:**
-```java
-public record Snapshot(
-    long[] buckets, // ровно 256 элементов (глубокая копия, не ссылка!)
-    long count,
-    long sum,
-    long min,
-    long max,
-    long p50,       // в мс: индекс_корзины * 4
-    long p99
-) {}
 
-public interface MetricsCollector {
-    void record(long value);
-    Snapshot snapshot();
+```java
+
+
+public record phases.zero.
+
+Snapshot(
+        long[] buckets, // ровно 256 элементов (глубокая копия, не ссылка!)
+        long count,
+        long sum,
+        long min,
+        long max,
+        long p50,       // в мс: индекс_корзины * 4
+        long p99
+) {
+}
+
+public interface phases.zero.
+
+MetricsCollector {
+    void record ( long value);
+    utils.Snapshot snapshot ();
 }
 ```
 
@@ -87,7 +95,7 @@ public interface MetricsCollector {
 #include <array>
 #include <cstdint>
 
-struct Snapshot {
+struct utils.Snapshot {
     std::array<uint64_t, 256> buckets;
     uint64_t count;
     uint64_t sum;
@@ -97,11 +105,11 @@ struct Snapshot {
     uint64_t p99;
 };
 
-class MetricsCollector {
+class utils.MetricsCollector {
 public:
-    virtual ~MetricsCollector() = default;
+    virtual ~utils.MetricsCollector() = default;
     virtual void record(uint64_t value) = 0;
-    virtual Snapshot snapshot() = 0;
+    virtual utils.Snapshot snapshot() = 0;
 };
 ```
 
@@ -255,7 +263,7 @@ void record(uint64_t val) {
 - **Горячая группа 0:** по закону Ципфа треть всех запросов имеют задержку 0..3 мс и попадают в корзину 0. А в группу 0 попадают корзины 0, 16, 32 и т.д. — суммарно около 37% всех вызовов `record()` ломятся в один и тот же «Лок 0»!
 - **Бутылочное горлышко переехало в атомики:** даже если бы корзины распределялись идеально равномерно, каждый поток на каждом вызове обязан обновить `count` и `sum`. Атомарный `fetch_add` или CAS на общих переменных заставляет процессорные ядра непрерывно перехватывать друг у друга владение кэш-линией сводки. Конкуренция за лок сменилась конкуренцией за атомик в памяти (atomic contention).
 
-##### 2. Снимок стал «рваным» (Inconsistent Snapshot)
+##### 2. Снимок стал «рваным» (Inconsistent utils.Snapshot)
 На этапе 1 лок был один: пока снимался снимок, никто не писал. Теперь же `record()` делает два независимых действия с зазором по времени: сначала меняет корзину под локом своей группы, потом меняет сводку.
 Снимок читает данные на лету и может увидеть наполовину примененные изменения!
 
@@ -356,7 +364,7 @@ private final ThreadLocal<ThreadState> myState = ThreadLocal.withInitial(() -> {
 
 
 **В C++ (Осторожно, частая ловушка!):**
-В C++ `thread_local` переменная — статическая (живёт всё время, пока жив поток). А замерялка создаёт новый `MetricsCollector` на каждую точку графика! Если просто написать `static thread_local ThreadState* my_state`, то при создании второго коллектора поток продолжит писать в память старого (уже удалённого!) коллектора -> Segfault или искажение данных.
+В C++ `thread_local` переменная — статическая (живёт всё время, пока жив поток). А замерялка создаёт новый `utils.MetricsCollector` на каждую точку графика! Если просто написать `static thread_local ThreadState* my_state`, то при создании второго коллектора поток продолжит писать в память старого (уже удалённого!) коллектора -> Segfault или искажение данных.
 **Решение:** хранить в TLS пару `{uint64_t collector_id, ThreadState* state}`:
 ```cpp
 inline uint64_t next_collector_id() {
@@ -364,7 +372,7 @@ inline uint64_t next_collector_id() {
     return counter.fetch_add(1);
 }
 
-class ThreadLocalCollector : public MetricsCollector {
+class ThreadLocalCollector : public utils.MetricsCollector {
     const uint64_t id_ = next_collector_id();
     std::mutex list_lock_;
     std::vector<std::unique_ptr<ThreadState>> all_states_;
@@ -448,7 +456,7 @@ for (ThreadState s : copyOfStates) {
 // считаем p50 и p99 кумулятивно по массиву out (см. Этап 0)
 long p50 = computePercentile(out, count, 0.50);
 long p99 = computePercentile(out, count, 0.99);
-return new Snapshot(out, count, sum, min, max, p50, p99);
+return new utils.Snapshot(out, count, sum, min, max, p50, p99);
 ```
 
 
@@ -589,7 +597,7 @@ record(value):
    > **Ловушка с min:** сбрасывайте `min[old] = Long.MAX_VALUE` (в C++: `UINT64_MAX`), а `max[old] = 0`. Если сбросить `min` в `0`, то во всех следующих снимках `min` навсегда залипнет в `0`!
    > **Почему писатель гарантированно увидит обнуление:** обнуление буфера выполняется строго до следующей смены `active` (которая делается через `seq_cst`), а писатель возвращается в этот буфер, только когда прочитает новое значение `active`. По этой же причине безопасны даже два вызова `snapshot()` подряд.
 
-5. По корзинам глобальной сводки рассчитывает `p50` и `p99` и возвращает объект `Snapshot`.
+5. По корзинам глобальной сводки рассчитывает `p50` и `p99` и возвращает объект `utils.Snapshot`.
 
 *Замечание о блокировке:* тем же мьютексом `snap_lock` защищайте список потоков при первичной регистрации в `record()` — тогда новый поток не добавится в список посреди обхода читателем.
 
