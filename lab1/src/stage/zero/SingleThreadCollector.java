@@ -1,11 +1,11 @@
-package phases.zero;
+package stage.zero;
 
 import utils.MetricsCollector;
 import utils.Snapshot;
 
 import java.util.Arrays;
 
-public class Collector implements MetricsCollector {
+public class SingleThreadCollector implements MetricsCollector {
 
     private long[] buckets = new long[256];
     private long count;

@@ -1,7 +1,5 @@
 package utils;
 
-import phases.zero.Collector;
-
 import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -10,7 +8,7 @@ public class Stopwatch {
 
 
 
-    public double run(Collector collector, long[] values, int t, int seconds) throws InterruptedException {
+    public double run(MetricsCollector collector, long[] values, int t, int seconds) throws InterruptedException {
         CountDownLatch start = new CountDownLatch(1);
         AtomicBoolean stop = new AtomicBoolean(false);
         long[] ops = new long[t];
@@ -53,7 +51,7 @@ public class Stopwatch {
         return Arrays.stream(ops).sum() * 1e9 / (tEnd-tStart);
     }
 
-    public double measurePoint(Collector collector, long[] values, int t) throws InterruptedException {
+    public double measurePoint(MetricsCollector collector, long[] values, int t) throws InterruptedException {
         run(collector, values, t, 5);
         double[] results = new double[5];
 
