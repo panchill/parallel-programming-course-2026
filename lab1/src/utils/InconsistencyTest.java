@@ -1,6 +1,8 @@
 package utils;
 
+import stage.fourth.DoubleBufferingCollector;
 import stage.second.LockStripingCollector;
+import stage.third.ThreadLocalCollector;
 
 import java.util.concurrent.CountDownLatch;
 
@@ -38,7 +40,7 @@ public class InconsistencyTest {
     }
 
     static void main(String[] args) throws InterruptedException {
-        MetricsCollector collector = new LockStripingCollector();
+        MetricsCollector collector = new DoubleBufferingCollector();
         long[] values = ZipfGenerator.generate((int) Math.pow(2, 20), 1023, 30L);
 
         CountDownLatch ready = new CountDownLatch(4);
