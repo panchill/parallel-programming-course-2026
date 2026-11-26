@@ -7,9 +7,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
 import java.util.PriorityQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class Stage1Static {
     private static final long[] EMPTY = new long[0];
@@ -49,7 +51,8 @@ public class Stage1Static {
             int day = Integer.parseInt(parts[2]);
 
             long started = System.nanoTime();
-            Result result = search(schedule, index, from, to, day);
+            Result result = search(
+                    schedule, index, from, to, day, threads, pool);
             long ms = (System.nanoTime() - started) / 1_000_000;
 
             System.out.printf("Q%d %s %s %d count=%d ms=%d%n", queryNumber, parts[0], parts[1], day, result.count, ms);
@@ -106,12 +109,44 @@ public class Stage1Static {
         return new Index(outgoing, byPair, airports);
     }
 
-    private static Result search(Schedule schedule, Index index, int from, int to, int day) {
+    private static Result search(
+            Schedule schedule, Index index,
+            int from, int to, int day,
+            int threads, ExecutorService pool) throws Exception {
         long[] firstFlights = index.outgoing[from];
         int begin = lowerBound(firstFlights, day * 1440);
         int end = lowerBound(firstFlights, (day + 1) * 1440);
+        int total = end - begin;
 
-        return searchRange(schedule, index, from, to, begin, end);
+        List<Future<Result>> tasks = new ArrayList<>();
+
+        for (int worker = 0; worker < threads; worker++) {
+            int start = begin + total * worker / threads;
+            int finish = begin + total * (worker + 1) / threads;
+
+            tasks.add(pool.submit(() ->
+                    searchRange(schedule, index, from, to, start, finish)));
+        }
+
+        PriorityQueue<Route> merged = new PriorityQueue<>(
+                11, (a, b) -> compareRoutes(b, a));
+        long count = 0;
+
+        for (Future<Result> task : tasks) {
+            Result part = task.get();
+            count += part.count;
+
+            for (Route route : part.top) {
+                offerTop(merged,
+                        route.price, route.duration,
+                        route.first, route.second, route.third,
+                        route.legs);
+            }
+        }
+
+        List<Route> best = new ArrayList<>(merged);
+        best.sort(Stage1Static::compareRoutes);
+        return new Result(count, best);
     }
 
     private static Result searchRange(Schedule schedule, Index index, int from, int to, int begin, int end) {
@@ -192,6 +227,11 @@ public class Stage1Static {
 
         List<Route> best = new ArrayList<>(top);
         best.sort(Stage1Static::compareRoutes);
+        if (from == schedule.airportId("BEC")
+                && to == schedule.airportId("LHR")) {
+            System.err.printf("%s: первых рейсов=%d, маршрутов=%d%n",
+                    Thread.currentThread().getName(), end - begin, count);
+        }
         return new Result(count, best);
     }
 
